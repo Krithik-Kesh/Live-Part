@@ -618,18 +618,30 @@ def draw(ax, scene):
     items = _collect_geometry(scene)
     verts = _all_vertices(items, scene.points)
 
-    # Batch faces by kind so we make one Poly3DCollection per colour
-    by_kind = {}
+    # All faces go into ONE Poly3DCollection with per-face colours.
+    # matplotlib's 3D engine has no real depth buffer -- it depth-sorts
+    # polygons by centroid distance, but only WITHIN a single collection.
+    # Drawing one collection per primitive kind meant faces from different
+    # kinds couldn't be sorted against each other, causing flicker/glitching
+    # as the camera rotated. A single shared collection fixes that.
+    all_faces, face_colors, edge_colors = [], [], []
+    seen_kinds = {}
     for faces, kind in items:
-        by_kind.setdefault(kind, []).extend(faces)
-
-    legend_handles = []
-    for kind, faces in by_kind.items():
         fc, ec = _KIND_COLOUR.get(kind, _DEFAULT_COL)
+        all_faces.extend(faces)
+        face_colors.extend([fc] * len(faces))
+        edge_colors.extend([ec] * len(faces))
+        seen_kinds.setdefault(kind, (fc, ec))
+
+    if all_faces:
         ax.add_collection3d(Poly3DCollection(
-            faces, facecolor=fc, edgecolor=ec, linewidths=0.3, alpha=FACE_ALPHA))
-        legend_handles.append(
-            mpatches.Patch(facecolor=fc, edgecolor=ec, label=kind.capitalize()))
+            all_faces, facecolor=face_colors, edgecolor=edge_colors,
+            linewidths=0.3, alpha=FACE_ALPHA))
+
+    legend_handles = [
+        mpatches.Patch(facecolor=fc, edgecolor=ec, label=kind.capitalize())
+        for kind, (fc, ec) in seen_kinds.items()
+    ]
 
     # Ports: red sphere + arrow + label
     if verts is not None and len(verts):
@@ -700,6 +712,9 @@ _st = {
     'entries':     {},      # param name → tk.Entry widget
     'observer':    None,    # watchdog Observer instance
     'last_reload': 0.0,
+    'xlim':        None,    # remembered zoom box (None = use autoscale)
+    'ylim':        None,
+    'zlim':        None,
 }
 
 # ── Root window ───────────────────────────────────────────────────────────────
@@ -745,11 +760,33 @@ canvas = FigureCanvasTkAgg(fig, master=body)
 canvas.get_tk_widget().pack(side='left', fill='both', expand=True)
 canvas.draw()
 
+
+# ── Scroll-wheel zoom ─────────────────────────────────────────────────────────
+def _on_scroll(event):
+    """Mouse wheel over the viewport zooms in/out around the current view centre."""
+    if event.inaxes != ax:
+        return
+    factor = 0.88 if event.button == 'up' else 1.0 / 0.88
+    new_lims = []
+    for get_lim in (ax.get_xlim3d, ax.get_ylim3d, ax.get_zlim3d):
+        lo, hi = get_lim()
+        centre = (lo + hi) / 2
+        half = (hi - lo) / 2 * factor
+        new_lims.append((centre - half, centre + half))
+    ax.set_xlim3d(*new_lims[0])
+    ax.set_ylim3d(*new_lims[1])
+    ax.set_zlim3d(*new_lims[2])
+    # remember it so the next auto-reload keeps this zoom level
+    _st['xlim'], _st['ylim'], _st['zlim'] = new_lims
+    canvas.draw_idle()
+
+canvas.mpl_connect('scroll_event', _on_scroll)
+
 # Hint bar
 hint = tk.Frame(root, bg="#12121f", pady=4)
 hint.pack(fill='x')
 tk.Label(hint,
-         text="Drag to rotate  ·  Save your script to auto-refresh  ·  "
+         text="Drag to rotate  ·  Scroll to zoom  ·  Save your script to auto-refresh  ·  "
               "Edit a parameter and press Enter to re-render",
          bg="#12121f", fg="#445566", font=("Segoe UI", 8)).pack()
 
@@ -886,6 +923,12 @@ def render_now():
     ax.set_axis_on()
     draw(ax, scene)
     ax.view_init(elev=elev, azim=azim)
+    # Reapply a remembered zoom level (set via the scroll wheel) so tweaking
+    # a parameter or auto-reloading on save doesn't snap back to full zoom-out.
+    if _st['xlim'] is not None:
+        ax.set_xlim3d(*_st['xlim'])
+        ax.set_ylim3d(*_st['ylim'])
+        ax.set_zlim3d(*_st['zlim'])
     canvas.draw()
 
     n = len(scene.render_solids())
@@ -946,7 +989,8 @@ def open_script():
         filetypes=[("Python part scripts", "*.py"), ("All files", "*.*")])
     if not path:
         return
-    _st.update(path=path, mtime=None, specs=[], last_reload=0.0)
+    _st.update(path=path, mtime=None, specs=[], last_reload=0.0,
+               xlim=None, ylim=None, zlim=None)   # fresh script -> fresh autoscale
     _watch_var.set("")
     _log_clear()
     _log(f"Opened: {path}", 'info')

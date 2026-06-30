@@ -74,26 +74,34 @@ def draw(ax, scene):
     """Clear ax and draw the scene. Returns the (min, max) bounds tuple."""
     ax.clear()
 
-    all_faces, child_faces = [], []
+    # All faces (top-level solids + absorbed children) go into ONE
+    # Poly3DCollection. matplotlib's 3D engine has no real depth buffer --
+    # it depth-sorts polygons by centroid distance, but only WITHIN a single
+    # collection. Splitting solids across separate add_collection3d() calls
+    # (as before) meant faces from different collections couldn't be sorted
+    # against each other, causing flicker/glitching as the view rotated.
+    faces, face_colors, edge_colors = [], [], []
+
+    def _add(fs, fc, ec):
+        faces.extend(fs)
+        face_colors.extend([fc] * len(fs))
+        edge_colors.extend([ec] * len(fs))
+
     for solid in scene.render_solids():
         if solid.kind == 'box':
-            all_faces += _box_faces(solid.M, solid.dims)
+            _add(_box_faces(solid.M, solid.dims), _SOLID_FACE, _SOLID_EDGE)
         elif solid.kind == 'cylinder':
-            all_faces += _cylinder_faces(solid.M, solid.dims)
+            _add(_cylinder_faces(solid.M, solid.dims), _SOLID_FACE, _SOLID_EDGE)
         for ch in solid.children:                  # absorbed (united) geometry
             M = solid.M @ ch['rel']
             if ch['kind'] == 'box':
-                child_faces += _box_faces(M, ch['dims'])
+                _add(_box_faces(M, ch['dims']), _CHILD_FACE, _SOLID_EDGE)
             elif ch['kind'] == 'cylinder':
-                child_faces += _cylinder_faces(M, ch['dims'])
+                _add(_cylinder_faces(M, ch['dims']), _CHILD_FACE, _SOLID_EDGE)
 
-    if all_faces:
+    if faces:
         ax.add_collection3d(Poly3DCollection(
-            all_faces, facecolor=_SOLID_FACE, edgecolor=_SOLID_EDGE,
-            linewidths=0.4, alpha=0.92))
-    if child_faces:
-        ax.add_collection3d(Poly3DCollection(
-            child_faces, facecolor=_CHILD_FACE, edgecolor=_SOLID_EDGE,
+            faces, facecolor=face_colors, edgecolor=edge_colors,
             linewidths=0.4, alpha=0.92))
 
     # snap / connection points
@@ -105,7 +113,7 @@ def draw(ax, scene):
             ax.quiver(x, y, z, dx, dy, dz, length=25, color=_POINT_COLOR,
                       normalize=True, linewidth=1.5)
 
-    bounds = _autoscale(ax, all_faces + child_faces, scene.points)
+    bounds = _autoscale(ax, faces, scene.points)
     ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
     try:
         ax.set_box_aspect((1, 1, 1))
