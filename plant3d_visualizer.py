@@ -1005,12 +1005,23 @@ def _force_reload():
     render_now()
 
 
+def _recenter():
+    """Drop the remembered zoom and let draw()'s autoscale fit everything again."""
+    _st['xlim'] = _st['ylim'] = _st['zlim'] = None
+    _force_reload()
+
+
 tk.Button(bar, text="Open Script", command=open_script,
           bg="#00adb5", fg="white", font=("Segoe UI", 9),
           relief='flat', padx=12, pady=4,
           activebackground="#009aa0").pack(side='left', padx=(18, 0))
 
 tk.Button(bar, text="Reload", command=_force_reload,
+          bg="#2a3a5a", fg="#aabbdd", font=("Segoe UI", 9),
+          relief='flat', padx=10, pady=4,
+          activebackground="#3a4a6a").pack(side='left', padx=(6, 0))
+
+tk.Button(bar, text="Recenter", command=_recenter,
           bg="#2a3a5a", fg="#aabbdd", font=("Segoe UI", 9),
           relief='flat', padx=10, pady=4,
           activebackground="#3a4a6a").pack(side='left', padx=(6, 0))
