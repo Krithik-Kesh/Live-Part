@@ -14,15 +14,13 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.patches as mpatches
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 1 — GEOMETRY SHIM
 # Fake implementations of every Plant 3D primitive.  Each class stores its
 # local geometry as polygon face lists and an accumulated 4×4 world transform.
 # The part script runs completely unmodified; it just hits these fakes instead
 # of the real varmain/aqa classes.
-# ═══════════════════════════════════════════════════════════════════════════════
 
-# ── Primitive kind labels (drive colour coding in the renderer) ───────────────
+#  Primitive kind labels (drive colour coding in the renderer) 
 KIND_BOX        = 'box'
 KIND_CYLINDER   = 'cylinder'
 KIND_CONE       = 'cone'
@@ -493,11 +491,11 @@ def _make_fake_modules():
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 # SECTION 2 — SCRIPT RUNNER
 # Loads a part script into a clean namespace, finds the part function,
 # extracts parameter specs, and calls it with the Scene object.
-# ═══════════════════════════════════════════════════════════════════════════════
+# 
 
 def _find_entry(namespace):
     """Prefer @activate-decorated function; else the last defined function."""
